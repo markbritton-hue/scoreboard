@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Football Scores Overlay</title>
+<style>
+  /* ---- Design tokens ---- */
+  :root {
+    --panel-bg: rgba(10, 16, 10, 0.86);
+    --panel-edge: #c9a227;      /* gold rule */
+    --field-green: #16321f;
+    --ink: #f3f1e6;             /* chalk white */
+    --ink-dim: #a9b6a3;
+    --live-red: #d64545;
+    --font-display: 'Oswald', Arial Narrow, sans-serif;
+    --font-score: 'Teko', Arial, sans-serif;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: transparent;   /* critical: OBS Browser Source chroma */
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  * { box-sizing: border-box; }
+
+  #sidebar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 92px;
+    background: var(--panel-bg);
+    border-top: 4px solid var(--panel-edge);
+    box-shadow: 0 -8px 28px rgba(0,0,0,0.55);
+    font-family: var(--font-display);
+    color: var(--ink);
+    display: flex;
+    align-items: stretch;
+    overflow: hidden;
+  }
+
+  #header {
+    flex: 0 0 auto;
+    padding: 0 18px;
+    border-right: 2px solid rgba(201,162,39,0.4);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 2px;
+  }
+
+  #header h1 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+
+  #live-dot {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    color: var(--live-red);
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+
+  #live-dot::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--live-red);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.25; }
+  }
+
+  #ticker-viewport {
+    flex: 1 1 auto;
+    overflow: hidden;
+    position: relative;
+  }
+
+  #list {
+    display: flex;
+    width: max-content;
+    align-items: center;
+    height: 100%;
+    white-space: nowrap;
+    will-change: transform;
+  }
+
+  @keyframes ticker-scroll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+
+  .game {
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    padding: 0 28px;
+    border-right: 1px solid rgba(255,255,255,0.4);
+    flex: 0 0 auto;
+  }
+
+  .matchup {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .team {
+    font-size: 24px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    line-height: 1.25;
+    white-space: nowrap;
+  }
+
+  .score {
+    font-family: var(--font-score);
+    font-size: 40px;
+    font-weight: 600;
+    min-width: 42px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .vs-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .row-top, .row-bottom {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .winner .score, .winner .team { color: #ffd76a; }
+
+  .note {
+    font-size: 12px;
+    color: var(--ink-dim);
+    font-style: italic;
+    white-space: nowrap;
+  }
+
+  #footer {
+    flex: 0 0 auto;
+    padding: 0 16px;
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: var(--ink-dim);
+    text-transform: uppercase;
+    border-left: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 2px;
+  }
+
+  #status {
+    color: var(--ink-dim);
+  }
+
+  .empty {
+    padding: 0 18px;
+    color: var(--ink-dim);
+    font-size: 13px;
+    white-space: nowrap;
+  }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Teko:wght@500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div id="sidebar">
+  <div id="header">
+    <h1>Scoreboard</h1>
+    <span id="live-dot">Live</span>
+  </div>
+  <div id="ticker-viewport">
+    <div id="list"><div class="empty">Loading scores&hellip;</div></div>
+  </div>
+  <div id="footer">
+    <span id="status">Updated --:--</span>
+    <span id="count"></span>
+  </div>
+</div>
+
+<script>
+  // Public CSV export of the Google Sheet (sheet must be shared "anyone with the link can view")
+  const SHEET_ID = "1o4IOGoVeV1ljEpoNxnMS56SN_hezE266Gvr7_GhYB9k";
+  const CSV_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/export?format=csv&gid=0";
+  const REFRESH_MS = 30 * 1000;
+
+  function parseCSVLine(line) {
+    // simple CSV cell split, good enough for a single free-text column
+    const cells = [];
+    let cur = "", inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (inQuotes) {
+        if (c === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+        else if (c === '"') { inQuotes = false; }
+        else { cur += c; }
+      } else {
+        if (c === '"') inQuotes = true;
+        else if (c === ',') { cells.push(cur); cur = ""; }
+        else cur += c;
+      }
+    }
+    cells.push(cur);
+    return cells;
+  }
+
+  function parseGameLine(raw) {
+    const text = raw.trim();
+    if (!text) return null;
+
+    // Strip trailing "Play Saturday" / similar scheduling notes
+    let note = "";
+    let body = text;
+    const noteMatch = text.match(/\s+(play\s+\w+.*)$/i);
+    if (noteMatch) {
+      note = noteMatch[1].trim();
+      body = text.slice(0, noteMatch.index).trim();
+    }
+
+    const vsMatch = body.match(/^(.*?)\s+vs\.?\s+(.*)$/i);
+    if (!vsMatch) return { raw: text, note };
+
+    const sideToTeamScore = (side) => {
+      const m = side.trim().match(/^(.*?)[\s-]+(\d+)\s*$/);
+      if (m) return { team: m[1].trim().replace(/-+$/, "").trim(), score: m[2] };
+      // no score yet
+      return { team: side.trim().replace(/-+$/, "").trim(), score: null };
+    };
+
+    const home = sideToTeamScore(vsMatch[1]);
+    const away = sideToTeamScore(vsMatch[2]);
+    return { home, away, note };
+  }
+
+  function render(games) {
+    const list = document.getElementById("list");
+    const count = document.getElementById("count");
+
+    if (!games.length) {
+      list.innerHTML = '<div class="empty">No scores yet.</div>';
+      count.textContent = "";
+      return;
+    }
+
+    const itemsHtml = games.map(g => {
+      if (!g.home) {
+        return `<div class="game"><div class="note">${escapeHtml(g.raw)}</div></div>`;
+      }
+      const hScore = g.home.score, aScore = g.away.score;
+      const hNum = hScore !== null ? parseInt(hScore, 10) : null;
+      const aNum = aScore !== null ? parseInt(aScore, 10) : null;
+      const hWin = hNum !== null && aNum !== null && hNum > aNum;
+      const aWin = hNum !== null && aNum !== null && aNum > hNum;
+
+      return `
+        <div class="game">
+          <div class="vs-row">
+            <div class="row-top ${hWin ? 'winner' : ''}">
+              <span class="team">${escapeHtml(g.home.team)}</span>
+              <span class="score">${hScore !== null ? hScore : '&ndash;'}</span>
+            </div>
+            <div class="row-bottom ${aWin ? 'winner' : ''}">
+              <span class="team">${escapeHtml(g.away.team)}</span>
+              <span class="score">${aScore !== null ? aScore : '&ndash;'}</span>
+            </div>
+          </div>
+          ${g.note ? `<div class="note">${escapeHtml(g.note)}</div>` : ''}
+        </div>`;
+    }).join("");
+
+    // capture how far through the current loop we are before the content
+    // underneath gets replaced, so the refresh doesn't visibly restart
+    let progress = 0;
+    if (tickerEntered && list.children.length) {
+      const prevFullWidth = list.scrollWidth / 2;
+      const x = getCurrentTranslateX(list);
+      progress = prevFullWidth ? (((-x) % prevFullWidth) + prevFullWidth) % prevFullWidth / prevFullWidth : 0;
+    }
+
+    // duplicate the content so the looping translateX(-50%) animation is seamless
+    list.innerHTML = itemsHtml + itemsHtml;
+    count.textContent = games.length + " games";
+
+    startTicker(progress);
+  }
+
+  function getCurrentTranslateX(el) {
+    const transform = getComputedStyle(el).transform;
+    if (transform === "none") return 0;
+    const match = transform.match(/matrix\(([^)]+)\)/);
+    if (!match) return 0;
+    const parts = match[1].split(",").map(Number);
+    return parts[4] || 0;
+  }
+
+  const SPEED_PX_PER_SEC = 65;
+  let tickerEntered = false; // only slide in from the right once, not on every data refresh
+
+  // #list is sized to its content (width: max-content), so its own box width
+  // equals scrollWidth and translateX(-50%) in the CSS keyframe lines up
+  // exactly with the end of the first (of two duplicated) copies -- that's
+  // what makes the loop seamless instead of jumping mid-content.
+  function startTicker(progress) {
+    const viewport = document.getElementById("ticker-viewport");
+    const list = document.getElementById("list");
+    if (!list || !list.children.length) return;
+
+    const fullWidth = list.scrollWidth / 2;
+    const loopDuration = Math.max(fullWidth / SPEED_PX_PER_SEC, 1.5);
+
+    const applyLoop = (delaySec) => {
+      list.style.transition = "none";
+      list.style.animation = `ticker-scroll ${loopDuration}s linear infinite`;
+      if (delaySec) list.style.animationDelay = `-${delaySec}s`;
+    };
+
+    if (tickerEntered) {
+      // data refresh: resume the loop at the same relative position instead
+      // of restarting from the beginning
+      list.style.transform = "";
+      applyLoop((progress || 0) * loopDuration);
+      return;
+    }
+
+    tickerEntered = true;
+    const viewportWidth = viewport.clientWidth;
+    const enterDuration = Math.max(viewportWidth / SPEED_PX_PER_SEC, 0.3);
+
+    list.style.animation = "none";
+    list.style.transition = "none";
+    list.style.transform = `translateX(${viewportWidth}px)`;
+
+    void list.offsetWidth; // force reflow so the starting position takes effect
+
+    list.style.transition = `transform ${enterDuration}s linear`;
+    requestAnimationFrame(() => {
+      list.style.transform = "translateX(0)";
+    });
+
+    list.addEventListener("transitionend", function onEnd(e) {
+      if (e.propertyName !== "transform") return;
+      list.removeEventListener("transitionend", onEnd);
+      list.style.transition = "none";
+      list.style.transform = "";
+      applyLoop();
+    }, { once: true });
+  }
+
+  window.addEventListener("resize", () => {
+    if (tickerEntered) startTicker();
+  });
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
+  function setStatus(msg) {
+    document.getElementById("status").textContent = msg;
+  }
+
+  async function fetchScores() {
+    try {
+      const res = await fetch(CSV_URL + "&_=" + Date.now(), { cache: "no-store" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const text = await res.text();
+      const lines = text.split(/\r?\n/);
+
+      const games = lines
+        .slice(1) // skip header row ("SCHOOLS")
+        .map(l => parseCSVLine(l)[0] || "")
+        .map(parseGameLine)
+        .filter(Boolean);
+
+      render(games);
+      const now = new Date();
+      setStatus("Updated " + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    } catch (err) {
+      setStatus("Update failed, retrying…");
+      console.error("Scoreboard fetch failed:", err);
+    }
+  }
+
+  fetchScores();
+  setInterval(fetchScores, REFRESH_MS);
+</script>
+
+</body>
+</html>
