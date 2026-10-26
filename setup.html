@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scoreboard Setup</title>
+<style>
+  :root {
+    --bg: #14181a;
+    --panel: #1d2326;
+    --edge: #2e3a3f;
+    --ink: #f3f1e6;
+    --dim: #a9b6a3;
+    --gold: #c9a227;
+    --bad: #d64545;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px 16px 48px; background: var(--bg); color: var(--ink); font-family: system-ui, Arial, sans-serif; }
+  main { max-width: 1000px; margin: 0 auto; }
+  h1 { margin: 0 0 4px; font-size: 24px; letter-spacing: 1px; }
+  h2 { margin: 0 0 8px; font-size: 16px; }
+  .sub { color: var(--dim); margin: 0 0 20px; font-size: 14px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 10px; }
+  button, .btn {
+    background: var(--panel); color: var(--ink); border: 1px solid var(--edge); border-radius: 6px;
+    padding: 8px 14px; font: inherit; font-size: 14px; cursor: pointer;
+  }
+  button:hover, .btn:hover { border-color: var(--gold); }
+  button.primary { background: var(--gold); color: #1a1500; border-color: var(--gold); font-weight: 600; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  input { background: var(--bg); color: var(--ink); border: 1px solid var(--edge); border-radius: 6px; padding: 8px 10px; font: inherit; font-size: 14px; }
+  input[type=text], input[type=url] { min-width: 240px; }
+  input[type=number] { width: 64px; }
+  .panel { background: var(--panel); border: 1px solid var(--edge); border-radius: 10px; padding: 14px; margin-bottom: 16px; }
+  .msg { font-size: 12px; color: var(--dim); }
+  .msg.err { color: var(--bad); }
+  #url { flex: 1 1 400px; font-size: 12px; }
+  #games { max-height: 340px; overflow: auto; }
+  #games label { display: block; padding: 3px 0; font-size: 13px; cursor: pointer; }
+  #games label input { margin-right: 8px; }
+  .d { color: var(--dim); margin-right: 8px; }
+  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--edge); border-radius: 10px; padding: 12px; display: flex; gap: 12px; }
+  .card.missing { border-color: var(--bad); }
+  .thumb { width: 84px; height: 84px; flex: 0 0 auto; background: #fff; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #999; font-size: 12px; text-align: center; }
+  .thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .info { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 6px; }
+  .name { font-weight: 600; font-size: 16px; }
+  .tag { font-size: 11px; color: var(--gold); margin-left: 6px; font-weight: 400; }
+  .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
+  .actions button { padding: 4px 9px; font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Scoreboard Setup</h1>
+  <p class="sub">Choose what the ticker shows, then copy the overlay link into OBS / H2R. Nothing here needs a server.</p>
+
+  <section class="panel">
+    <h2>1. Where the scores come from</h2>
+    <div class="bar">
+      <label><input type="radio" name="source" value="mhsaa"> MHSAA official scores (automatic)</label>
+      <label><input type="radio" name="source" value="sheet"> Google Sheet (typed)</label>
+    </div>
+    <div class="bar">
+      Game date <input type="date" id="date">
+      <button id="clear-date">Use rolling window</button>
+      <span class="msg">Pick a date to show only that day&rsquo;s games, or clear it to follow the current week.</span>
+    </div>
+    <div class="bar">
+      Rolling window: <input type="number" id="days-back" min="0" max="14"> days back to
+      <input type="number" id="days-ahead" min="0" max="14"> days ahead
+    </div>
+  </section>
+
+  <section class="panel" id="games-panel">
+    <h2>2. Which games to show</h2>
+    <div class="bar">
+      <button id="refresh">Refresh games</button>
+      <button id="sel-all">Show all</button>
+      <button id="sel-none">Hide all</button>
+      <span class="msg" id="games-msg">Tick the games you want on the ticker.</span>
+    </div>
+    <div id="games" class="msg"></div>
+  </section>
+
+  <section class="panel">
+    <h2>3. Overlay link</h2>
+    <div class="bar">
+      <input type="text" id="url" readonly>
+      <button class="primary" id="copy">Copy link</button>
+      <a class="btn" id="open" target="_blank">Open overlay</a>
+    </div>
+    <span class="msg">Paste this link into the OBS Browser Source (or H2R web page). It carries all of the choices above, so
+      changing something here means copying the new link.</span>
+  </section>
+
+  <section class="panel">
+    <h2>4. Schools and logos</h2>
+    <div class="bar">
+      <input type="text" id="add-name" placeholder="Add a school, e.g. Bronson">
+      <button id="add">Add school</button>
+      <span class="msg" id="count"></span>
+    </div>
+    <div id="grid">Loading schools&hellip;</div>
+    <p class="msg">Logos in <code>Graphics/logos.json</code> come with the site. For a school with no logo, use
+      &ldquo;Set logo link&rdquo; and paste the address of any logo image on the web.</p>
+  </section>
+</main>
+
+<script src="core.js"></script>
+<script>
+  const KEY = "scoreboard-setup-v1";
+  const $ = id => document.getElementById(id);
+  let cfg = { ...SB.DEFAULTS };
+  let siteLogos = {};
+  let sheetNames = [];
+  let games = [];
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {}
+    updateUrl();
+  }
+
+  function updateUrl() {
+    const dir = location.href.replace(/[?#].*$/, "").replace(/[^/]*$/, "");
+    const url = dir + "mascot.html?cfg=" + SB.encodeCfg(cfg);
+    $("url").value = url;
+    $("open").href = url;
+  }
+
+  function readForm() {
+    cfg.source = document.querySelector("input[name=source]:checked").value;
+    cfg.date = $("date").value;
+    cfg.days_back = Number($("days-back").value) || 0;
+    cfg.days_ahead = Number($("days-ahead").value) || 0;
+  }
+
+  function fillForm() {
+    document.querySelector(`input[name=source][value=${cfg.source}]`).checked = true;
+    $("date").value = cfg.date;
+    $("days-back").value = cfg.days_back;
+    $("days-ahead").value = cfg.days_ahead;
+  }
+
+  // ---- games ----
+  function renderGames() {
+    $("games").innerHTML = games.map((g, i) => `<label><input type="checkbox" data-i="${i}" ${cfg.hidden.includes(g.id) ? "" : "checked"}>
+      <span class="d">${esc(g.date.slice(5, 10))}</span>${esc(g.home.team)} ${g.home.score ?? ""} vs ${esc(g.away.team)} ${g.away.score ?? ""}
+      <span class="d">${esc(g.note)}</span></label>`).join("") || "No games in this window.";
+    const shown = games.filter(g => !cfg.hidden.includes(g.id)).length;
+    $("games-msg").className = "msg";
+    $("games-msg").textContent = games.length ? `${shown} of ${games.length} games on the ticker.` : "";
+  }
+
+  async function loadGames() {
+    if (cfg.source !== "mhsaa") {
+      games = [];
+      $("games").textContent = "The Google Sheet source shows every line in the sheet; per-game choices need the MHSAA source.";
+      return;
+    }
+    $("games").textContent = "Reading scores…";
+    try {
+      const r = await SB.fetchMhsaaGames(cfg, await SB.trackedSchools(cfg));
+      games = r.games;
+      renderGames();
+      if (r.missing.length) $("games").insertAdjacentHTML("beforeend", `<div class="msg err">No game found for: ${esc(r.missing.join(", "))}</div>`);
+    } catch (err) {
+      $("games").textContent = "Could not load games: " + err.message;
+    }
+  }
+
+  $("games").addEventListener("change", e => {
+    const box = e.target.closest("input[type=checkbox]");
+    if (!box) return;
+    const id = games[box.dataset.i].id;
+    cfg.hidden = cfg.hidden.filter(x => x !== id);
+    if (!box.checked) cfg.hidden.push(id);
+    save();
+    renderGames();
+  });
+
+  $("sel-all").addEventListener("click", () => { cfg.hidden = []; save(); renderGames(); });
+  $("sel-none").addEventListener("click", () => { cfg.hidden = games.map(g => g.id); save(); renderGames(); });
+  $("refresh").addEventListener("click", loadGames);
+  $("clear-date").addEventListener("click", () => { $("date").value = ""; onSettingsChange(); });
+
+  async function onSettingsChange() {
+    readForm();
+    save();
+    loadGames();
+  }
+  document.querySelectorAll("input[name=source], #date, #days-back, #days-ahead")
+    .forEach(el => el.addEventListener("change", onSettingsChange));
+
+  // ---- schools ----
+  const logoFor = name => (cfg.logos || {})[name.toLowerCase()] || siteLogos[name.toLowerCase()] || null;
+
+  function renderSchools() {
+    const names = [...sheetNames];
+    for (const x of cfg.extras) if (!names.some(n => n.toLowerCase() === x.toLowerCase())) names.push(x);
+    const extras = new Set(cfg.extras.map(x => x.toLowerCase()));
+    const have = names.filter(n => logoFor(n)).length;
+    $("count").textContent = `${have} of ${names.length} schools have a logo`;
+    $("grid").innerHTML = names.map((n, i) => {
+      const logo = logoFor(n);
+      const custom = (cfg.logos || {})[n.toLowerCase()];
+      return `<div class="card ${logo ? "" : "missing"}" data-name="${esc(n)}">
+        <div class="thumb">${logo ? `<img src="${esc(logo)}" alt="">` : "No logo"}</div>
+        <div class="info">
+          <div class="name">${esc(n)}${extras.has(n.toLowerCase()) ? '<span class="tag">added</span>' : ""}</div>
+          <div class="actions">
+            <button data-act="logo">Set logo link</button>
+            ${custom ? '<button data-act="clear">Clear my logo</button>' : ""}
+            ${extras.has(n.toLowerCase()) ? '<button data-act="remove">Remove school</button>' : ""}
+          </div>
+        </div></div>`;
+    }).join("");
+  }
+
+  $("grid").addEventListener("click", e => {
+    const btn = e.target.closest("button[data-act]");
+    if (!btn) return;
+    const name = btn.closest(".card").dataset.name, key = name.toLowerCase();
+    cfg.logos = cfg.logos || {};
+    if (btn.dataset.act === "logo") {
+      const url = prompt("Paste the web address of a logo image for " + name + ":");
+      if (!url) return;
+      cfg.logos[key] = url.trim();
+    }
+    if (btn.dataset.act === "clear") delete cfg.logos[key];
+    if (btn.dataset.act === "remove") {
+      cfg.extras = cfg.extras.filter(x => x.toLowerCase() !== key);
+      delete cfg.logos[key];
+    }
+    save(); renderSchools(); loadGames();
+  });
+
+  $("add").addEventListener("click", () => {
+    const name = $("add-name").value.replace(/\s+/g, " ").trim();
+    if (!name) return;
+    if (!cfg.extras.some(x => x.toLowerCase() === name.toLowerCase())) cfg.extras.push(name);
+    $("add-name").value = "";
+    save(); renderSchools(); loadGames();
+  });
+
+  $("copy").addEventListener("click", async () => {
+    $("url").select();
+    try { await navigator.clipboard.writeText($("url").value); } catch (e) { document.execCommand("copy"); }
+    $("copy").textContent = "Copied";
+    setTimeout(() => $("copy").textContent = "Copy link", 1500);
+  });
+
+  (async function init() {
+    cfg = await SB.loadConfig();            // site defaults, then ?cfg= if the page was opened from an overlay link
+    if (!new URLSearchParams(location.search).get("cfg")) {
+      try { Object.assign(cfg, JSON.parse(localStorage.getItem(KEY) || "{}")); } catch (e) {}
+    }
+    siteLogos = await SB.loadLogos({ logos: {} });
+    try { sheetNames = await SB.sheetTeams(); } catch (e) { $("grid").textContent = "Could not read the Google Sheet: " + e.message; }
+    fillForm();
+    updateUrl();
+    renderSchools();
+    loadGames();
+  })();
+</script>
+</body>
+</html>
