@@ -210,12 +210,95 @@
     font-size: 13px;
     white-space: nowrap;
   }
+  #card {
+    position: fixed;
+    right: 32px;
+    top: 50%;
+    transform: translateY(-50%);   /* right side, vertically centred above the ticker bar */
+    width: 340px;
+    background: #3a3a3a;        /* mid grey, not near-black: avoids H2R-style dark-pixel keying */
+    border: 4px solid var(--panel-edge);
+    border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.55);
+    font-family: var(--font-display);
+    color: var(--ink);
+    overflow: hidden;
+  }
+
+  #card[hidden] { display: none; }
+
+  #note {
+    padding: 8px 16px;
+    background: rgba(0,0,0,0.25);
+    border-bottom: 2px solid rgba(201,162,39,0.5);
+    font-size: 14px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    text-align: center;
+  }
+
+  #card .row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 16px;
+  }
+
+  .row + #card .row { border-top: 1px solid rgba(255,255,255,0.25); }
+
+  #card .logo {
+    width: 64px;
+    height: 64px;
+    object-fit: contain;
+    flex: 0 0 auto;
+    background: #fff;
+    border-radius: 8px;
+    padding: 3px;
+  }
+
+  #card .logo.monogram {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-score);
+    font-size: 34px;
+    font-weight: 600;
+    color: #333;
+    padding: 0;
+  }
+
+  #card .team {
+    white-space: normal;
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 24px;
+    font-weight: 500;
+    line-height: 1.15;
+  }
+
+  #card .score {
+    font-family: var(--font-score);
+    font-size: 58px;
+    font-weight: 600;
+    min-width: 56px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  #card .winner .team, #card .winner .score { color: #ffd76a; }
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Teko:wght@500;600&display=swap" rel="stylesheet">
 </head>
 <body>
+
+<div id="card" hidden>
+  <div id="note"></div>
+  <div class="row" id="home"></div>
+  <div class="row" id="away"></div>
+</div>
 
 <div id="sidebar">
   <div id="header">
@@ -244,7 +327,7 @@
   Promise.all([SB.loadConfig()])
     .then(async ([cfg]) => { CFG = cfg; LOGOS = await SB.loadLogos(cfg); })
     .catch(e => console.error(e))
-    .finally(() => { fetchScores(); setInterval(fetchScores, REFRESH_MS); });
+    .finally(() => { fetchScores(); setInterval(fetchScores, REFRESH_MS); setFeatured(CFG.featured, CFG.featuredDate); });
 
   // Shows the mascot logo, with the school name beside it as small text so the
   // game is still readable if a logo is missing or hard to recognise.
@@ -468,6 +551,66 @@
     }
   }
 
+
+  // ---- featured game: one score on the right, chosen with the Feature button on the setup page ----
+  const CARD_REFRESH_MS = 20 * 1000;
+  let current = { id: null, date: null };
+  let lastCardSig = null;
+
+  function cardRowHtml(side) {
+    const src = LOGOS[side.team.trim().toLowerCase()];
+    const tile = src
+      ? `<img class="logo" src="${escapeHtml(src)}" alt="">`
+      : `<span class="logo monogram">${escapeHtml(side.team.trim().charAt(0).toUpperCase())}</span>`;
+    return `${tile}<span class="team">${escapeHtml(side.team)}</span><span class="score">${side.score ?? "&ndash;"}</span>`;
+  }
+
+  function showCard(game) {
+    const card = document.getElementById("card");
+    if (!game) { lastCardSig = null; card.hidden = true; return; }
+    const sig = JSON.stringify([game.home, game.away, game.note]);
+    if (sig === lastCardSig) return;  // unchanged: leave the card alone
+    lastCardSig = sig;
+    const h = game.home.score === null ? null : Number(game.home.score);
+    const a = game.away.score === null ? null : Number(game.away.score);
+    document.getElementById("note").textContent = game.note;
+    document.getElementById("home").innerHTML = cardRowHtml(game.home);
+    document.getElementById("away").innerHTML = cardRowHtml(game.away);
+    document.getElementById("home").classList.toggle("winner", h !== null && a !== null && h > a);
+    document.getElementById("away").classList.toggle("winner", h !== null && a !== null && a > h);
+    card.hidden = false;
+  }
+
+  async function refreshCard() {
+    if (!current.id) return showCard(null);
+    try {
+      const cfg = { ...CFG, date: current.date };
+      const { games } = await SB.fetchMhsaaGames(cfg, await SB.trackedSchools(cfg));
+      showCard(games.find(g => g.id === current.id) || null);
+    } catch (err) {
+      console.error("Featured score fetch failed:", err);  // keep whatever is on screen
+    }
+  }
+
+  function setFeatured(id, date) {
+    current = { id: id || null, date: date || null };
+    lastCardSig = null;
+    refreshCard();
+  }
+
+  // The setup page tells this page which game to show when both are open in the same browser.
+  try {
+    const channel = new BroadcastChannel("scoreboard-featured");
+    channel.onmessage = e => setFeatured(e.data.id, e.data.date);
+  } catch (e) {}
+  window.addEventListener("storage", e => {
+    if (e.key !== "scoreboard-featured" || !e.newValue) return;
+    const v = JSON.parse(e.newValue);
+    setFeatured(v.id, v.date);
+  });
+
+
+  setInterval(() => refreshCard(), CARD_REFRESH_MS);
 </script>
 
 </body>

@@ -78,6 +78,7 @@
 
   <section class="panel" id="games-panel">
     <h2>2. Which games to show</h2>
+    <p class="msg" style="margin:0 0 8px">Untick a game to drop it from the ticker. <strong>Feature</strong> puts that one score on the right side of the same overlay.</p>
     <div class="bar">
       <button id="refresh">Refresh games</button>
       <button id="sel-all">Show all</button>
@@ -95,19 +96,8 @@
       <a class="btn" id="open" target="_blank">Open overlay</a>
     </div>
     <span class="msg">Paste this link into the OBS Browser Source (or H2R web page). It carries all of the choices above, so
-      changing something here means copying the new link.</span>
-  </section>
-
-  <section class="panel">
-    <h2>Featured score (right side of the screen)</h2>
-    <p class="msg">Use the <strong>Feature</strong> button on a game above to put just that score on a second, transparent overlay.
-      Add this link to OBS / H2R as its own source. If this setup page and that source are open in the same browser, the featured
-      game switches the moment you click; otherwise copy the link again after choosing a game.</p>
-    <div class="bar">
-      <input type="text" id="featured-url" readonly style="flex:1 1 400px;font-size:12px">
-      <button class="primary" id="featured-copy">Copy link</button>
-      <a class="btn" id="featured-open" target="_blank">Open featured overlay</a>
-    </div>
+      changing something here means copying the new link. The one exception is the featured score: if this page and the
+      overlay are open in the same browser, clicking Feature switches the game on screen straight away.</span>
   </section>
 
   <section class="panel">
@@ -146,9 +136,6 @@
     const url = dir + "mascot.html?cfg=" + SB.encodeCfg(cfg);
     $("url").value = url;
     $("open").href = url;
-    const featured = dir + "featured.html?cfg=" + SB.encodeCfg(cfg);
-    $("featured-url").value = featured;
-    $("featured-open").href = featured;
   }
 
   function readForm() {
@@ -291,13 +278,6 @@
     try { await navigator.clipboard.writeText($("url").value); } catch (e) { document.execCommand("copy"); }
     $("copy").textContent = "Copied";
     setTimeout(() => $("copy").textContent = "Copy link", 1500);
-  });
-
-  $("featured-copy").addEventListener("click", async () => {
-    $("featured-url").select();
-    try { await navigator.clipboard.writeText($("featured-url").value); } catch (e) { document.execCommand("copy"); }
-    $("featured-copy").textContent = "Copied";
-    setTimeout(() => $("featured-copy").textContent = "Copy link", 1500);
   });
 
   (async function init() {
