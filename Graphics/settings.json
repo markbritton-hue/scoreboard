@@ -1,5 +1,7 @@
 {
   "source": "mhsaa",
   "date": "",
-  "hidden": []
+  "hidden": [],
+  "days_back": 4,
+  "days_ahead": 3
 }

@@ -64,8 +64,12 @@
     </div>
     <div class="bar">
       Game date <input type="date" id="date">
-      <button id="clear-date">Use the latest Friday</button>
-      <span class="msg" id="date-msg"></span>
+      <button id="clear-date">Use rolling window</button>
+      <span class="msg">Pick a date to show only that day&rsquo;s games, or clear it to follow the current week.</span>
+    </div>
+    <div class="bar">
+      Rolling window: <input type="number" id="days-back" min="0" max="14"> days back to
+      <input type="number" id="days-ahead" min="0" max="14"> days ahead
     </div>
   </section>
 
@@ -132,11 +136,15 @@
   function readForm() {
     cfg.source = document.querySelector("input[name=source]:checked").value;
     cfg.date = $("date").value;
+    cfg.days_back = Number($("days-back").value) || 0;
+    cfg.days_ahead = Number($("days-ahead").value) || 0;
   }
 
   function fillForm() {
     document.querySelector(`input[name=source][value=${cfg.source}]`).checked = true;
     $("date").value = cfg.date;
+    $("days-back").value = cfg.days_back;
+    $("days-ahead").value = cfg.days_ahead;
   }
 
   // ---- games ----
@@ -159,7 +167,6 @@
     try {
       const r = await SB.fetchMhsaaGames(cfg, await SB.trackedSchools(cfg));
       games = r.games;
-      $("date-msg").textContent = cfg.date ? "" : "No date picked: showing " + r.day.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
       renderGames();
       if (r.missing.length) $("games").insertAdjacentHTML("beforeend", `<div class="msg err">No game found for: ${esc(r.missing.join(", "))}</div>`);
     } catch (err) {
@@ -187,7 +194,7 @@
     save();
     loadGames();
   }
-  document.querySelectorAll("input[name=source], #date")
+  document.querySelectorAll("input[name=source], #date, #days-back, #days-ahead")
     .forEach(el => el.addEventListener("change", onSettingsChange));
 
   // ---- schools ----
