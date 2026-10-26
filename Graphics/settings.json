@@ -1,7 +1,7 @@
 {
   "source": "mhsaa",
-  "days_back": 2,
-  "days_ahead": 2,
-  "date": "2026-10-23",
+  "days_back": 4,
+  "days_ahead": 3,
+  "date": "",
   "hidden": []
 }
