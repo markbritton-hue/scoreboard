@@ -36,8 +36,11 @@
   .msg.err { color: var(--bad); }
   #url { flex: 1 1 400px; font-size: 12px; }
   #games { max-height: 340px; overflow: auto; }
-  #games label { display: block; padding: 3px 0; font-size: 13px; cursor: pointer; }
-  #games label input { margin-right: 8px; }
+  #games .game-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 13px; }
+  #games .game-row label { flex: 1; cursor: pointer; }
+  #games .game-row label input { margin-right: 8px; }
+  #games .game-row button { padding: 3px 9px; font-size: 12px; }
+  #games .game-row.featured { background: rgba(201,162,39,0.18); border-radius: 6px; }
   .d { color: var(--dim); margin-right: 8px; }
   #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
   .card { background: var(--panel); border: 1px solid var(--edge); border-radius: 10px; padding: 12px; display: flex; gap: 12px; }
@@ -96,6 +99,18 @@
   </section>
 
   <section class="panel">
+    <h2>Featured score (right side of the screen)</h2>
+    <p class="msg">Use the <strong>Feature</strong> button on a game above to put just that score on a second, transparent overlay.
+      Add this link to OBS / H2R as its own source. If this setup page and that source are open in the same browser, the featured
+      game switches the moment you click; otherwise copy the link again after choosing a game.</p>
+    <div class="bar">
+      <input type="text" id="featured-url" readonly style="flex:1 1 400px;font-size:12px">
+      <button class="primary" id="featured-copy">Copy link</button>
+      <a class="btn" id="featured-open" target="_blank">Open featured overlay</a>
+    </div>
+  </section>
+
+  <section class="panel">
     <h2>4. Schools and logos</h2>
     <div class="bar">
       <input type="text" id="add-name" placeholder="Add a school, e.g. Bronson">
@@ -131,6 +146,9 @@
     const url = dir + "mascot.html?cfg=" + SB.encodeCfg(cfg);
     $("url").value = url;
     $("open").href = url;
+    const featured = dir + "featured.html?cfg=" + SB.encodeCfg(cfg);
+    $("featured-url").value = featured;
+    $("featured-open").href = featured;
   }
 
   function readForm() {
@@ -149,9 +167,12 @@
 
   // ---- games ----
   function renderGames() {
-    $("games").innerHTML = games.map((g, i) => `<label><input type="checkbox" data-i="${i}" ${cfg.hidden.includes(g.id) ? "" : "checked"}>
+    $("games").innerHTML = games.map((g, i) => `<div class="game-row ${cfg.featured === g.id ? "featured" : ""}">
+      <label><input type="checkbox" data-i="${i}" ${cfg.hidden.includes(g.id) ? "" : "checked"}>
       <span class="d">${esc(g.date.slice(5, 10))}</span>${esc(g.home.team)} ${g.home.score ?? ""} vs ${esc(g.away.team)} ${g.away.score ?? ""}
-      <span class="d">${esc(g.note)}</span></label>`).join("") || "No games in this window.";
+      <span class="d">${esc(g.note)}</span></label>
+      ${cfg.featured === g.id ? '<button data-feature="clear">Take off screen</button>' : `<button data-feature="${i}">Feature</button>`}
+      </div>`).join("") || "No games in this window.";
     const shown = games.filter(g => !cfg.hidden.includes(g.id)).length;
     $("games-msg").className = "msg";
     $("games-msg").textContent = games.length ? `${shown} of ${games.length} games on the ticker.` : "";
@@ -182,6 +203,23 @@
     if (!box.checked) cfg.hidden.push(id);
     save();
     renderGames();
+  });
+
+  // ---- featured game: shown alone, on the right, by featured.html ----
+  function setFeatured(game) {
+    cfg.featured = game ? game.id : "";
+    cfg.featuredDate = game ? game.date.slice(0, 10) : "";
+    save();
+    const msg = { id: cfg.featured, date: cfg.featuredDate };
+    try { new BroadcastChannel("scoreboard-featured").postMessage(msg); } catch (e) {}  // switches an open featured page in this browser
+    try { localStorage.setItem("scoreboard-featured", JSON.stringify({ ...msg, t: Date.now() })); } catch (e) {}
+    renderGames();
+  }
+
+  $("games").addEventListener("click", e => {
+    const btn = e.target.closest("button[data-feature]");
+    if (!btn) return;
+    setFeatured(btn.dataset.feature === "clear" ? null : games[btn.dataset.feature]);
   });
 
   $("sel-all").addEventListener("click", () => { cfg.hidden = []; save(); renderGames(); });
@@ -253,6 +291,13 @@
     try { await navigator.clipboard.writeText($("url").value); } catch (e) { document.execCommand("copy"); }
     $("copy").textContent = "Copied";
     setTimeout(() => $("copy").textContent = "Copy link", 1500);
+  });
+
+  $("featured-copy").addEventListener("click", async () => {
+    $("featured-url").select();
+    try { await navigator.clipboard.writeText($("featured-url").value); } catch (e) { document.execCommand("copy"); }
+    $("featured-copy").textContent = "Copied";
+    setTimeout(() => $("featured-copy").textContent = "Copy link", 1500);
   });
 
   (async function init() {
