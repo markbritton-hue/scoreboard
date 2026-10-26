@@ -4,7 +4,7 @@ const SB = (() => {
   const SHEET_ID = "1o4IOGoVeV1ljEpoNxnMS56SN_hezE266Gvr7_GhYB9k";
   const CSV_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/export?format=csv&gid=0";
   const MHSAA_URL = "https://my.mhsaa.com/DesktopModules/MHSAA-Endpoint/handlers/ContestWithParticipantDepotSearch.ashx";
-  const DEFAULTS = { source: "mhsaa", date: "", days_back: 4, days_ahead: 3, hidden: [], extras: [], logos: {} };
+  const DEFAULTS = { source: "mhsaa", date: "", hidden: [], extras: [], logos: {} };
 
   // ---- settings: defaults < Graphics/settings.json < ?cfg= in the page address ----
   function encodeCfg(cfg) {
@@ -102,23 +102,22 @@ const SB = (() => {
     return String(d.getMonth() + 1).padStart(2, "0") + "/" + String(d.getDate()).padStart(2, "0") + "/" + d.getFullYear();
   }
 
-  function windowFor(cfg) {
+  // The game day: the date chosen on the setup page, otherwise the most recent Friday (today if it is Friday).
+  function gameDay(cfg) {
     if (cfg.date) {
       const [y, m, d] = cfg.date.split("-").map(Number);
-      return [new Date(y, m - 1, d), new Date(y, m - 1, d)];
+      return new Date(y, m - 1, d);
     }
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const start = new Date(today), end = new Date(today);
-    start.setDate(start.getDate() - Number(cfg.days_back));
-    end.setDate(end.getDate() + Number(cfg.days_ahead));
-    return [start, end];
+    const day = new Date();
+    day.setHours(0, 0, 0, 0);
+    day.setDate(day.getDate() - ((day.getDay() + 2) % 7));
+    return day;
   }
 
   async function fetchMhsaaGames(cfg, teamNames) {
-    const [start, end] = windowFor(cfg);
+    const day = gameDay(cfg);
     const urls = ["BFB", "B8F"].map(sport => // 11-player and 8-player football
-      `${MHSAA_URL}?Method=ScoreCenterSearch&StartDate=${mdy(start)}&EndDate=${mdy(end)}&Level=&Sport=${sport}` +
+      `${MHSAA_URL}?Method=ScoreCenterSearch&StartDate=${mdy(day)}&EndDate=${mdy(day)}&Level=&Sport=${sport}` +
       "&SchoolName=&Conference=&NoScore=&PostSeason=&ViewType=");
     const rows = (await Promise.all(urls.map(async u => {
       const r = await fetch(u);
@@ -152,7 +151,7 @@ const SB = (() => {
     }
     games.sort((x, y) => x.date.localeCompare(y.date));
     const missing = [...tracked].filter(([k]) => !matched.has(k)).map(([, t]) => t);
-    return { games, missing, window: [start, end] };
+    return { games, missing, day };
   }
 
   return { DEFAULTS, encodeCfg, decodeCfg, loadConfig, loadLogos, parseCSVLine, sheetLines, sheetTeams,

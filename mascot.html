@@ -304,6 +304,8 @@
     return { home, away, note };
   }
 
+  let lastHtml = null;
+
   function render(games) {
     const list = document.getElementById("list");
     const count = document.getElementById("count");
@@ -339,6 +341,10 @@
           ${g.note ? `<div class="note">${escapeHtml(g.note)}</div>` : ''}
         </div>`;
     }).join("");
+
+    // nothing changed since the last refresh: leave the ticker alone so it doesn't flicker or restart
+    if (itemsHtml === lastHtml) return;
+    lastHtml = itemsHtml;
 
     // capture how far through the current loop we are before the content
     // underneath gets replaced, so the refresh doesn't visibly restart
