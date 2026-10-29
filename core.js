@@ -156,6 +156,29 @@ const SB = (() => {
     return { games, missing, window: [start, end] };
   }
 
-  return { DEFAULTS, encodeCfg, decodeCfg, loadConfig, loadLogos, parseCSVLine, sheetLines, sheetTeams,
+  // GitHub Pages lets browsers (and OBS) cache files for 10 minutes, so a push can take that long to show up.
+  // This checks the files' timestamps every couple of minutes, bypassing the cache, and reloads the page
+  // as soon as one has changed.
+  function reloadOnUpdate(files, everyMs = 2 * 60 * 1000) {
+    const stamp = async f => {
+      const r = await fetch(f, { method: "HEAD", cache: "no-store" });
+      return r.headers.get("last-modified") || r.headers.get("etag") || "";
+    };
+    let first = null;
+    const check = async () => {
+      try {
+        const now = await Promise.all(files.map(stamp));
+        if (!first) { first = now; return; }
+        if (now.some((s, i) => s !== first[i])) {
+          await Promise.all(files.map(f => fetch(f, { cache: "reload" })));  // refresh the cached copies first
+          location.reload();
+        }
+      } catch (e) { /* offline or local file: try again next time */ }
+    };
+    check();
+    setInterval(check, everyMs);
+  }
+
+  return { DEFAULTS, reloadOnUpdate, encodeCfg, decodeCfg, loadConfig, loadLogos, parseCSVLine, sheetLines, sheetTeams,
            trackedSchools, fetchMhsaaGames, norm };
 })();

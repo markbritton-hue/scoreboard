@@ -290,6 +290,8 @@
     setTimeout(() => $("cmd-copy").textContent = "Copy command", 1500);
   });
 
+  SB.reloadOnUpdate(["setup.html", "core.js"]);
+
   (async function init() {
     cfg = await SB.loadConfig();            // site defaults, then ?cfg= if the page was opened from an overlay link
     if (!new URLSearchParams(location.search).get("cfg")) {
