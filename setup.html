@@ -109,7 +109,9 @@
     </div>
     <div id="grid">Loading schools&hellip;</div>
     <p class="msg">Logos in <code>Graphics/logos.json</code> come with the site. For a school with no logo, use
-      &ldquo;Set logo link&rdquo; and paste the address of any logo image on the web.</p>
+      &ldquo;Set logo link&rdquo; and paste the address of any logo image on the web. To have the logo found
+      and saved for everyone, run the command shown below on your PC, then push the <code>Graphics</code> folder.</p>
+    <div class="bar"><input type="text" id="cmd" readonly style="flex:1 1 400px;font-size:12px"><button id="cmd-copy">Copy command</button></div>
   </section>
 </main>
 
@@ -231,6 +233,9 @@
     const extras = new Set(cfg.extras.map(x => x.toLowerCase()));
     const have = names.filter(n => logoFor(n)).length;
     $("count").textContent = `${have} of ${names.length} schools have a logo`;
+    const lacking = names.filter(n => !logoFor(n));
+    $("cmd").value = lacking.length ? "python fetch_logos.py " + lacking.map(n => `"${n}"`).join(" ") : "Every school has a logo.";
+    $("cmd-copy").disabled = !lacking.length;
     $("grid").innerHTML = names.map((n, i) => {
       const logo = logoFor(n);
       const custom = (cfg.logos || {})[n.toLowerCase()];
@@ -278,6 +283,11 @@
     try { await navigator.clipboard.writeText($("url").value); } catch (e) { document.execCommand("copy"); }
     $("copy").textContent = "Copied";
     setTimeout(() => $("copy").textContent = "Copy link", 1500);
+  });
+
+  $("cmd-copy").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText($("cmd").value); $("cmd-copy").textContent = "Copied"; } catch (e) {}
+    setTimeout(() => $("cmd-copy").textContent = "Copy command", 1500);
   });
 
   (async function init() {

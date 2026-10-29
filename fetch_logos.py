@@ -5,8 +5,12 @@ Reads the same Google Sheet the overlay uses, looks each school up on MaxPreps
 mapping in Graphics/logos.json. Schools already in MANUAL (or already
 downloaded) are skipped, so it is safe to re-run whenever new schools appear.
 
-    python fetch_logos.py            # fetch only schools that have no logo yet
-    python fetch_logos.py --refresh  # re-download everything
+    python fetch_logos.py                    # fetch only schools that have no logo yet
+    python fetch_logos.py --refresh          # re-download everything
+    python fetch_logos.py "Bronson" "Colon"  # add schools by name (saved to Graphics/extra_schools.json) and fetch them
+    python fetch_logos.py "Bronson=https://www.maxpreps.com/mi/bronson/bronson-vikings/"  # when the name search can't find it
+
+Then commit and push Graphics/ to publish the new logos.
 """
 import csv, io, json, re, sys, time, urllib.parse, urllib.request
 from pathlib import Path
@@ -15,6 +19,7 @@ ROOT = Path(__file__).parent
 GRAPHICS = ROOT / "Graphics"
 OUT_DIR = GRAPHICS / "maxpreps"
 MAP_FILE = GRAPHICS / "logos.json"
+EXTRAS_FILE = GRAPHICS / "extra_schools.json"  # schools added by hand that aren't on the sheet
 SHEET_ID = "1o4IOGoVeV1ljEpoNxnMS56SN_hezE266Gvr7_GhYB9k"
 CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=0"
 UA = {"User-Agent": "Mozilla/5.0"}
@@ -121,17 +126,39 @@ def download_logo(team, page=None):
     return dest.relative_to(ROOT).as_posix(), page
 
 
+def load_extras():
+    return json.loads(EXTRAS_FILE.read_text()) if EXTRAS_FILE.exists() else []
+
+
 def main():
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
     refresh = "--refresh" in sys.argv
+    pages = {}  # school -> MaxPreps team page given as NAME=URL
+    extras = load_extras()
+    for arg in args:
+        name, _, url = arg.partition("=")
+        name = re.sub(r"\s+", " ", name).strip()
+        if name.lower() not in [x.lower() for x in extras + sheet_teams()]:
+            extras.append(name)
+        if url:
+            m = re.search(r"/[a-z]{2}/[a-z0-9-]+/[a-z0-9-]+/", urllib.parse.urlparse(url).path + "/")
+            if not m:
+                sys.exit(f"Not a MaxPreps team URL: {url}")
+            pages[name.lower()] = m.group(0)
+    if args:
+        EXTRAS_FILE.write_text(json.dumps(extras, indent=2))
+
     mapping = {} if refresh else load_map()
     mapping.update(MANUAL)
+    names = sheet_teams()
+    names += [x for x in extras if x.lower() not in [n.lower() for n in names]]
     missing = []
-    for team in sheet_teams():
+    for team in names:
         key = team.lower()
-        if key in MANUAL or (key in mapping and (ROOT / mapping[key]).exists()):
+        if key in MANUAL or (key in mapping and (ROOT / mapping[key]).exists() and key not in pages):
             continue
         try:
-            mapping[key], page = download_logo(team)
+            mapping[key], page = download_logo(team, pages.get(key))
             print(f"OK   {team:28} {page}")
         except Exception as e:
             missing.append(team)
@@ -141,6 +168,7 @@ def main():
     print(f"\nSaved {len(mapping)} logos to {MAP_FILE.relative_to(ROOT)}")
     if missing:
         print("No logo found for:", ", ".join(missing))
+        print('Try: python fetch_logos.py "Name=https://www.maxpreps.com/mi/<town>/<school>/"')
 
 
 if __name__ == "__main__":
