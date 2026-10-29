@@ -612,6 +612,19 @@
 
   setInterval(() => refreshCard(), CARD_REFRESH_MS);
   SB.reloadOnUpdate(["mascot.html", "core.js"]);
+
+  // The setup page saved something new: apply it without reloading, so the ticker doesn't restart for no reason.
+  SB.pollLive(async live => {
+    const tickerPart = c => JSON.stringify({ ...c, featured: 0, featuredDate: 0 });
+    const tickerChanged = tickerPart({ ...CFG, ...live }) !== tickerPart(CFG);
+    CFG = { ...CFG, ...live };
+    setFeatured(CFG.featured, CFG.featuredDate);   // the card changes on its own
+    if (tickerChanged) {                           // only redraw the ticker if something it shows changed
+      LOGOS = await SB.loadLogos(CFG);
+      lastHtml = null;
+      fetchScores();
+    }
+  });
 </script>
 
 </body>

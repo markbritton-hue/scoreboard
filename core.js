@@ -6,6 +6,69 @@ const SB = (() => {
   const MHSAA_URL = "https://my.mhsaa.com/DesktopModules/MHSAA-Endpoint/handlers/ContestWithParticipantDepotSearch.ashx";
   const DEFAULTS = { source: "mhsaa", date: "", days_back: 4, days_ahead: 3, hidden: [], extras: [], logos: {} };
 
+  // ---- remote control: the setup page saves its settings to live.json on the "live" branch of the repo
+  // (a branch GitHub Pages doesn't publish, so saving doesn't rebuild the site). The overlay polls it. ----
+  const REPO = "markbritton-hue/scoreboard";
+  const LIVE_FILE = `https://api.github.com/repos/${REPO}/contents/live.json`;
+
+  async function fetchLive() {
+    try {
+      // "no-cache" revalidates with GitHub's ETag; an unchanged file comes back as a free 304
+      const r = await fetch(LIVE_FILE + "?ref=live", { headers: { Accept: "application/vnd.github.raw+json" }, cache: "no-cache" });
+      return r.ok ? await r.json() : null;
+    } catch (e) { return null; }
+  }
+
+  let lastLive = null;
+
+  // Calls onChange(settings) whenever the setup page has saved something new. Not used when the page was
+  // opened from a ?cfg= link, because that link is a fixed snapshot.
+  function pollLive(onChange, everyMs = 15000) {
+    if (new URLSearchParams(location.search).get("cfg")) return;
+    setInterval(async () => {
+      const live = await fetchLive();
+      if (!live) return;
+      const sig = JSON.stringify(live);
+      if (sig === lastLive) return;
+      lastLive = sig;
+      onChange(live);
+    }, everyMs);
+  }
+
+  async function saveLive(cfg, token) {
+    const h = { Authorization: "Bearer " + token, Accept: "application/vnd.github+json" };
+    const api = `https://api.github.com/repos/${REPO}`;
+    const text = JSON.stringify(cfg, null, 2);
+    const bytes = new TextEncoder().encode(text);
+    let bin = "";
+    bytes.forEach(b => bin += String.fromCharCode(b));
+    const content = btoa(bin);
+
+    async function put() {
+      const g = await fetch(`${api}/contents/live.json?ref=live`, { headers: h, cache: "no-store" });
+      let sha;
+      if (g.ok) sha = (await g.json()).sha;
+      else if (g.status === 401 || g.status === 403) throw new Error("GitHub rejected the token (" + g.status + ")");
+      else if (g.status === 404) {
+        const ref = await fetch(`${api}/git/ref/heads/live`, { headers: h, cache: "no-store" });
+        if (ref.status === 404) {  // first use: create the branch from main
+          const main = await (await fetch(`${api}/git/ref/heads/main`, { headers: h })).json();
+          const mk = await fetch(`${api}/git/refs`, { method: "POST", headers: h, body: JSON.stringify({ ref: "refs/heads/live", sha: main.object.sha }) });
+          if (!mk.ok) throw new Error("Could not create the live branch: " + (await mk.json()).message);
+        }
+      }
+      return fetch(`${api}/contents/live.json`, {
+        method: "PUT", headers: h,
+        body: JSON.stringify({ message: "Update live settings", content, branch: "live", ...(sha ? { sha } : {}) })
+      });
+    }
+
+    let r = await put();
+    if (r.status === 409 || r.status === 422) r = await put();  // the file changed under us: retry once with the new sha
+    if (!r.ok) throw new Error((await r.json()).message || "GitHub error " + r.status);
+    lastLive = JSON.stringify(cfg);
+  }
+
   // ---- settings: defaults < Graphics/settings.json < ?cfg= in the page address ----
   function encodeCfg(cfg) {
     const bytes = new TextEncoder().encode(JSON.stringify(cfg));
@@ -32,6 +95,10 @@ const SB = (() => {
     cfg.extras = [...new Set([...(cfg.extras || []), ...extras])];
     if (cfg.source === "maxpreps") cfg.source = "mhsaa";
     const param = new URLSearchParams(location.search).get("cfg");
+    if (!param) {
+      const live = await fetchLive();
+      if (live) { Object.assign(cfg, live); lastLive = JSON.stringify(live); }
+    }
     if (param) {
       try { Object.assign(cfg, decodeCfg(param)); } catch (e) { console.error("Bad cfg parameter", e); }
     }
@@ -179,6 +246,6 @@ const SB = (() => {
     setInterval(check, everyMs);
   }
 
-  return { DEFAULTS, reloadOnUpdate, encodeCfg, decodeCfg, loadConfig, loadLogos, parseCSVLine, sheetLines, sheetTeams,
+  return { DEFAULTS, reloadOnUpdate, fetchLive, pollLive, saveLive, encodeCfg, decodeCfg, loadConfig, loadLogos, parseCSVLine, sheetLines, sheetTeams,
            trackedSchools, fetchMhsaaGames, norm };
 })();

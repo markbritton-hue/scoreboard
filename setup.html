@@ -89,6 +89,24 @@
   </section>
 
   <section class="panel">
+    <h2>Remote control (recommended)</h2>
+    <p class="msg">With this on, the overlay in OBS / H2R follows this page by itself, within about a minute: ticking games,
+      the date, <strong>Feature</strong> and <strong>Take off screen</strong>. You copy the overlay link once and never again.
+      It needs a GitHub access token so this page can save your choices to your repo.</p>
+    <ol class="msg" style="margin:0 0 8px 18px;padding:0">
+      <li>Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" style="color:var(--gold)">GitHub &rarr; new fine-grained token</a>.</li>
+      <li>Repository access: <em>Only select repositories</em> &rarr; <strong>scoreboard</strong>. Permissions &rarr; Repository &rarr; <strong>Contents: Read and write</strong>.</li>
+      <li>Generate it, copy it, and paste it below. It stays in this browser only.</li>
+    </ol>
+    <div class="bar">
+      <input type="password" id="token" placeholder="GitHub token" autocomplete="off" style="flex:1 1 300px">
+      <button class="primary" id="token-save">Turn on</button>
+      <button id="token-clear">Turn off</button>
+      <span class="msg" id="live-msg"></span>
+    </div>
+  </section>
+
+  <section class="panel">
     <h2>3. Overlay link</h2>
     <div class="bar">
       <input type="text" id="url" readonly>
@@ -128,14 +146,38 @@
     return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
+  const TOKEN_KEY = "scoreboard-token-v1";
+  const getToken = () => { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch (e) { return ""; } };
+  let liveTimer = null, liveBusy = false, livePending = false;
+
   function save() {
     try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {}
     updateUrl();
+    if (getToken()) {
+      clearTimeout(liveTimer);
+      liveTimer = setTimeout(pushLive, 700);   // wait for a burst of clicks to finish
+    }
+  }
+
+  async function pushLive() {
+    const msg = $("live-msg");
+    if (liveBusy) { livePending = true; return; }
+    liveBusy = true;
+    msg.className = "msg"; msg.textContent = "Saving…";
+    try {
+      await SB.saveLive(cfg, getToken());
+      msg.textContent = "Saved " + new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }) + ". The overlay picks it up within about a minute.";
+    } catch (err) {
+      msg.className = "msg err"; msg.textContent = "Could not save: " + err.message;
+    }
+    liveBusy = false;
+    if (livePending) { livePending = false; pushLive(); }
   }
 
   function updateUrl() {
     const dir = location.href.replace(/[?#].*$/, "").replace(/[^/]*$/, "");
-    const url = dir + "mascot.html?cfg=" + SB.encodeCfg(cfg);
+    // With remote control on, the overlay reads its settings from GitHub, so its link never changes.
+    const url = getToken() ? dir + "mascot.html" : dir + "mascot.html?cfg=" + SB.encodeCfg(cfg);
     $("url").value = url;
     $("open").href = url;
   }
@@ -292,11 +334,37 @@
 
   SB.reloadOnUpdate(["setup.html", "core.js"]);
 
+  $("token-save").addEventListener("click", () => {
+    const t = $("token").value.trim();
+    if (!t) return;
+    try { localStorage.setItem(TOKEN_KEY, t); } catch (e) { $("live-msg").textContent = "This browser won't store the token."; return; }
+    $("token").value = "";
+    showLive();
+    updateUrl();
+    pushLive();
+  });
+
+  $("token-clear").addEventListener("click", () => {
+    try { localStorage.removeItem(TOKEN_KEY); } catch (e) {}
+    showLive();
+    updateUrl();
+  });
+
+  function showLive() {
+    const on = !!getToken();
+    $("token-save").textContent = on ? "Replace token" : "Turn on";
+    $("token-clear").disabled = !on;
+    if (!on) { $("live-msg").className = "msg"; $("live-msg").textContent = "Off: the overlay link carries a fixed copy of your choices."; }
+  }
+
   (async function init() {
     cfg = await SB.loadConfig();            // site defaults, then ?cfg= if the page was opened from an overlay link
-    if (!new URLSearchParams(location.search).get("cfg")) {
+    // With remote control on, what's saved on GitHub is the truth (other devices may have changed it);
+    // otherwise fall back to what this browser remembers.
+    if (!new URLSearchParams(location.search).get("cfg") && !getToken()) {
       try { Object.assign(cfg, JSON.parse(localStorage.getItem(KEY) || "{}")); } catch (e) {}
     }
+    showLive();
     siteLogos = await SB.loadLogos({ logos: {} });
     try { sheetNames = await SB.sheetTeams(); } catch (e) { $("grid").textContent = "Could not read the Google Sheet: " + e.message; }
     fillForm();
