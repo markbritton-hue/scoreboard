@@ -598,23 +598,11 @@
     refreshCard();
   }
 
-  // The setup page tells this page which game to show when both are open in the same browser.
-  try {
-    const channel = new BroadcastChannel("scoreboard-featured");
-    channel.onmessage = e => setFeatured(e.data.id, e.data.date);
-  } catch (e) {}
-  window.addEventListener("storage", e => {
-    if (e.key !== "scoreboard-featured" || !e.newValue) return;
-    const v = JSON.parse(e.newValue);
-    setFeatured(v.id, v.date);
-  });
-
-
   setInterval(() => refreshCard(), CARD_REFRESH_MS);
   SB.reloadOnUpdate(["mascot.html", "core.js"]);
 
   // The setup page saved something new: apply it without reloading, so the ticker doesn't restart for no reason.
-  SB.pollLive(async live => {
+  async function applyLive(live) {
     const tickerPart = c => JSON.stringify({ ...c, featured: 0, featuredDate: 0 });
     const tickerChanged = tickerPart({ ...CFG, ...live }) !== tickerPart(CFG);
     CFG = { ...CFG, ...live };
@@ -624,7 +612,12 @@
       lastHtml = null;
       fetchScores();
     }
-  });
+  }
+
+  // Remote control (GitHub token): the setup page's changes arrive by polling live.json.
+  SB.pollLive(applyLive);
+  // Same browser, no token needed: the setup page's changes arrive instantly via BroadcastChannel/localStorage.
+  SB.listenLocal(applyLive);
 </script>
 
 </body>

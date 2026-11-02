@@ -153,6 +153,7 @@
   function save() {
     try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {}
     updateUrl();
+    SB.broadcastLocal(cfg);   // same-browser overlay tab picks this up instantly, no token needed
     if (getToken()) {
       clearTimeout(liveTimer);
       liveTimer = setTimeout(pushLive, 700);   // wait for a burst of clicks to finish
@@ -240,10 +241,7 @@
   function setFeatured(game) {
     cfg.featured = game ? game.id : "";
     cfg.featuredDate = game ? game.date.slice(0, 10) : "";
-    save();
-    const msg = { id: cfg.featured, date: cfg.featuredDate };
-    try { new BroadcastChannel("scoreboard-featured").postMessage(msg); } catch (e) {}  // switches an open featured page in this browser
-    try { localStorage.setItem("scoreboard-featured", JSON.stringify({ ...msg, t: Date.now() })); } catch (e) {}
+    save();   // broadcasts the full config, including the feature change, to any open overlay tab
     renderGames();
   }
 

@@ -21,6 +21,25 @@ const SB = (() => {
 
   let lastLive = null;
 
+  // ---- local sync: setup.html and mascot.html share no backend, but when both are open in the
+  // same browser (e.g. running the site locally), they can hand settings to each other directly,
+  // with no GitHub token or network round-trip involved. ----
+  function broadcastLocal(cfg) {
+    try { new BroadcastChannel("scoreboard-cfg").postMessage(cfg); } catch (e) {}
+    try { localStorage.setItem("scoreboard-cfg", JSON.stringify({ ...cfg, t: Date.now() })); } catch (e) {}
+  }
+
+  function listenLocal(onChange) {
+    try {
+      const channel = new BroadcastChannel("scoreboard-cfg");
+      channel.onmessage = e => onChange(e.data);
+    } catch (e) {}
+    window.addEventListener("storage", e => {
+      if (e.key !== "scoreboard-cfg" || !e.newValue) return;
+      try { onChange(JSON.parse(e.newValue)); } catch (err) {}
+    });
+  }
+
   // Calls onChange(settings) whenever the setup page has saved something new. Not used when the page was
   // opened from a ?cfg= link, because that link is a fixed snapshot.
   function pollLive(onChange, everyMs = 15000) {
@@ -246,6 +265,6 @@ const SB = (() => {
     setInterval(check, everyMs);
   }
 
-  return { DEFAULTS, reloadOnUpdate, fetchLive, pollLive, saveLive, encodeCfg, decodeCfg, loadConfig, loadLogos, parseCSVLine, sheetLines, sheetTeams,
+  return { DEFAULTS, reloadOnUpdate, fetchLive, pollLive, saveLive, broadcastLocal, listenLocal, encodeCfg, decodeCfg, loadConfig, loadLogos, parseCSVLine, sheetLines, sheetTeams,
            trackedSchools, fetchMhsaaGames, norm };
 })();
