@@ -8,5 +8,5 @@ echo Overlay:     http://localhost:9000/mascot.html
 echo From another computer on this network, try: http://%LANIP%:9000/mascot.html
 echo Press Ctrl+C to stop.
 start "" "http://localhost:9000/setup.html"
-%PY% -m http.server 9000 --bind 0.0.0.0
+%PY% server.py 9000
 pause

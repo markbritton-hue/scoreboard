@@ -614,6 +614,8 @@
     }
   }
 
+  // Local server (no token needed): setup page POSTs settings; overlay polls every 2s. Works for OBS.
+  SB.pollLocalLive(applyLive);
   // Remote control (GitHub token): the setup page's changes arrive by polling live.json.
   SB.pollLive(applyLive);
   // Same browser, no token needed: the setup page's changes arrive instantly via BroadcastChannel/localStorage.

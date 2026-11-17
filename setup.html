@@ -154,6 +154,7 @@
     try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {}
     updateUrl();
     SB.broadcastLocal(cfg);   // same-browser overlay tab picks this up instantly, no token needed
+    SB.saveLocalLive(cfg);        // local server: OBS browser source on the same machine picks this up
     if (getToken()) {
       clearTimeout(liveTimer);
       liveTimer = setTimeout(pushLive, 700);   // wait for a burst of clicks to finish

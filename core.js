@@ -6,6 +6,41 @@ const SB = (() => {
   const MHSAA_URL = "https://my.mhsaa.com/DesktopModules/MHSAA-Endpoint/handlers/ContestWithParticipantDepotSearch.ashx";
   const DEFAULTS = { source: "mhsaa", date: "", days_back: 4, days_ahead: 3, hidden: [], extras: [], logos: {} };
 
+  // ---- local server live control: when running from a local Python server, settings are POSTed to
+  // /local-live.json and the overlay polls it every 2 seconds — no token needed, works for OBS. ----
+  const LOCAL_LIVE = "/local-live.json";
+  const isLocalServer = () => !!location.port && !location.hostname.includes('github');
+
+  async function fetchLocalLive() {
+    if (!isLocalServer()) return null;
+    try {
+      const r = await fetch(LOCAL_LIVE + "?_=" + Date.now(), { cache: "no-store" });
+      if (!r.ok) return null;
+      const d = await r.json();
+      return Object.keys(d).length ? d : null;
+    } catch (e) { return null; }
+  }
+
+  async function saveLocalLive(cfg) {
+    if (!isLocalServer()) return;
+    try {
+      await fetch(LOCAL_LIVE, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cfg) });
+    } catch (e) {}
+  }
+
+  let lastLocalLive = null;
+  function pollLocalLive(onChange, everyMs = 2000) {
+    if (!isLocalServer()) return;
+    setInterval(async () => {
+      const live = await fetchLocalLive();
+      if (!live) return;
+      const sig = JSON.stringify(live);
+      if (sig === lastLocalLive) return;
+      lastLocalLive = sig;
+      onChange(live);
+    }, everyMs);
+  }
+
   // ---- remote control: the setup page saves its settings to live.json on the "live" branch of the repo
   // (a branch GitHub Pages doesn't publish, so saving doesn't rebuild the site). The overlay polls it. ----
   const REPO = "markbritton-hue/scoreboard";
@@ -115,16 +150,19 @@ const SB = (() => {
     if (cfg.source === "maxpreps") cfg.source = "mhsaa";
     const param = new URLSearchParams(location.search).get("cfg");
     if (!param) {
-      const live = await fetchLive();
-      if (live) { Object.assign(cfg, live); lastLive = JSON.stringify(live); }
-      // Without a token, local settings are authoritative: feature clicks and hidden games
-      // aren't pushed to GitHub, so localStorage is the only place they're stored.
-      const hasToken = !!localStorage.getItem("scoreboard-token-v1");
-      if (!hasToken) {
-        try {
-          const local = localStorage.getItem("scoreboard-cfg");
-          if (local) { const d = JSON.parse(local); delete d.t; Object.assign(cfg, d); }
-        } catch (e) {}
+      const localLive = await fetchLocalLive();
+      if (localLive) {
+        Object.assign(cfg, localLive);  // local server is freshest: covers feature clicks, hidden games
+      } else {
+        const live = await fetchLive();
+        if (live) { Object.assign(cfg, live); lastLive = JSON.stringify(live); }
+        const hasToken = !!localStorage.getItem("scoreboard-token-v1");
+        if (!hasToken) {
+          try {
+            const local = localStorage.getItem("scoreboard-cfg");
+            if (local) { const d = JSON.parse(local); delete d.t; Object.assign(cfg, d); }
+          } catch (e) {}
+        }
       }
     }
     if (param) {
@@ -274,6 +312,6 @@ const SB = (() => {
     setInterval(check, everyMs);
   }
 
-  return { DEFAULTS, reloadOnUpdate, fetchLive, pollLive, saveLive, broadcastLocal, listenLocal, encodeCfg, decodeCfg, loadConfig, loadLogos, parseCSVLine, sheetLines, sheetTeams,
+  return { DEFAULTS, reloadOnUpdate, fetchLive, pollLive, saveLive, fetchLocalLive, saveLocalLive, pollLocalLive, broadcastLocal, listenLocal, encodeCfg, decodeCfg, loadConfig, loadLogos, parseCSVLine, sheetLines, sheetTeams,
            trackedSchools, fetchMhsaaGames, norm };
 })();
