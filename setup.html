@@ -178,7 +178,7 @@
   function updateUrl() {
     const dir = location.href.replace(/[?#].*$/, "").replace(/[^/]*$/, "");
     // With remote control on, the overlay reads its settings from GitHub, so its link never changes.
-    const url = getToken() ? dir + "mascot.html" : dir + "mascot.html?cfg=" + SB.encodeCfg(cfg);
+    const url = dir + "mascot.html";
     $("url").value = url;
     $("open").href = url;
   }

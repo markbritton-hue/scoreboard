@@ -117,6 +117,13 @@ const SB = (() => {
     if (!param) {
       const live = await fetchLive();
       if (live) { Object.assign(cfg, live); lastLive = JSON.stringify(live); }
+      else {
+        // No GitHub live config — fall back to whatever the setup page last saved in this browser
+        try {
+          const local = localStorage.getItem("scoreboard-cfg");
+          if (local) { const d = JSON.parse(local); delete d.t; Object.assign(cfg, d); }
+        } catch (e) {}
+      }
     }
     if (param) {
       try { Object.assign(cfg, decodeCfg(param)); } catch (e) { console.error("Bad cfg parameter", e); }
