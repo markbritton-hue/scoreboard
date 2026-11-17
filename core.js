@@ -117,8 +117,10 @@ const SB = (() => {
     if (!param) {
       const live = await fetchLive();
       if (live) { Object.assign(cfg, live); lastLive = JSON.stringify(live); }
-      else {
-        // No GitHub live config — fall back to whatever the setup page last saved in this browser
+      // Without a token, local settings are authoritative: feature clicks and hidden games
+      // aren't pushed to GitHub, so localStorage is the only place they're stored.
+      const hasToken = !!localStorage.getItem("scoreboard-token-v1");
+      if (!hasToken) {
         try {
           const local = localStorage.getItem("scoreboard-cfg");
           if (local) { const d = JSON.parse(local); delete d.t; Object.assign(cfg, d); }
